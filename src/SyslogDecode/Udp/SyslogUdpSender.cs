@@ -4,27 +4,26 @@
 // *                                                       *
 // ********************************************************/
 
+using SyslogDecode.Model;
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+
 namespace SyslogDecode.Udp
 {
-    using System;
-    using System.Net;
-    using System.Net.Sockets;
-    using System.Text;
-    using SyslogDecode.Model;
-
     /// <summary>Sends a stream of Syslog messages to the target remote UDP endpoint. </summary>
-    public class SyslogUdpSender: IDisposable
+    public class SyslogUdpSender : IDisposable
     {
-        public UdpClient UdpClient => _udpClient;
-        private readonly IPEndPoint _target; 
-        private readonly UdpClient _udpClient;
+        public UdpClient UdpClient { get; }
+        private readonly IPEndPoint _target;
 
         /// <summary>Creates a new instance of the class. </summary>
         /// <param name="target">The target endpoint. </param>
         public SyslogUdpSender(IPEndPoint target)
         {
-            _target = target; 
-            _udpClient = new UdpClient();
+            _target = target;
+            UdpClient = new UdpClient();
         }
 
         /// <summary>Creates a new instance of the class. </summary>
@@ -32,14 +31,14 @@ namespace SyslogDecode.Udp
         /// <param name="port">The target port; defaults to 514.</param>
         public SyslogUdpSender(string ipAddress, int port = 514)
         {
-            var addr = IPAddress.Parse(ipAddress);
+            IPAddress addr = IPAddress.Parse(ipAddress);
             _target = new IPEndPoint(addr, port);
-            _udpClient = new UdpClient();
+            UdpClient = new UdpClient();
         }
 
         public void Dispose()
         {
-            _udpClient.Dispose();
+            UdpClient.Dispose();
         }
 
         /// <summary>
@@ -48,7 +47,7 @@ namespace SyslogDecode.Udp
         /// <param name="entry">SyslogEntry - a SyslogEntry instance.</param>
         public void Send(ParsedSyslogMessage entry)
         {
-            var payload = SyslogSerializer.Serialize(entry);
+            string payload = SyslogSerializer.Serialize(entry);
             Send(payload);
         }
 
@@ -56,8 +55,8 @@ namespace SyslogDecode.Udp
         /// <param name="payload">The payload to send.</param>
         public void Send(string payload)
         {
-            var dgram = Encoding.UTF8.GetBytes(payload);
-            _udpClient.Send(dgram, dgram.Length, _target);
+            byte[] dgram = Encoding.UTF8.GetBytes(payload);
+            _ = UdpClient.Send(dgram, dgram.Length, _target);
         }
     }
 }

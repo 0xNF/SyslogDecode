@@ -4,11 +4,11 @@
 // *                                                       *
 // ********************************************************/
 
+using System;
+using System.Diagnostics;
+
 namespace SyslogDecode.Common
 {
-    using System;
-    using System.Diagnostics;
-
     /// <summary>
     ///     A static utility class implementing the access to Now and UtcNow date/time system functions.
     /// </summary>
@@ -30,7 +30,7 @@ namespace SyslogDecode.Common
         {
             get
             {
-                var now = DateTime.UtcNow;
+                DateTime now = DateTime.UtcNow;
                 return (_offset == TimeSpan.Zero) ? now : now.Add(_offset);
             }
         }
@@ -44,7 +44,7 @@ namespace SyslogDecode.Common
         {
             get
             {
-                var now = DateTime.Now;
+                DateTime now = DateTime.Now;
                 return (_offset == TimeSpan.Zero) ? now : now.Add(_offset);
             }
         }
@@ -60,7 +60,7 @@ namespace SyslogDecode.Common
         /// </remarks>
         public static void SetOffset(TimeSpan offset)
         {
-            _offset = offset; 
+            _offset = offset;
         }
 
         /// <summary>
@@ -85,7 +85,7 @@ namespace SyslogDecode.Common
         /// <returns>The time span since the timestamp.</returns>
         public static TimeSpan GetDuration(long fromTimestamp)
         {
-            var now = Stopwatch.GetTimestamp();
+            long now = Stopwatch.GetTimestamp();
             return GetDuration(fromTimestamp, now);
         }
 
@@ -95,7 +95,7 @@ namespace SyslogDecode.Common
         /// <returns>The time interval.</returns>
         public static TimeSpan GetDuration(long fromTimestamp, long untilTimestamp)
         {
-            var timeMs = (untilTimestamp - fromTimestamp) * 1000.0 / Stopwatch.Frequency; // timeMs =  ticks/ ticksPerSec * 1000 (ms per sec)
+            double timeMs = (untilTimestamp - fromTimestamp) * 1000.0 / Stopwatch.Frequency; // timeMs =  ticks/ ticksPerSec * 1000 (ms per sec)
             return TimeSpan.FromMilliseconds(timeMs);
         }
 

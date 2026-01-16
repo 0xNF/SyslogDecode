@@ -4,13 +4,14 @@
 // *                                                       *
 // ********************************************************/
 
+using SyslogDecode.Model;
+using SyslogDecode.Parsing.VariantParsers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace SyslogDecode.Parsing
 {
-    using SyslogDecode.Model;
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-
     public static class ParsingExtensions
     {
         public static bool IsIpV4Char(this char ch)
@@ -30,31 +31,42 @@ namespace SyslogDecode.Parsing
 
         public static int SkipUntil(this string message, int start, Func<char, bool> func)
         {
-            var p = start;
+            int p = start;
             while (p < message.Length && !func(message[p]))
+            {
                 p++;
-            return p; 
+            }
+
+            return p;
         }
 
         public static int Skip(this string message, int start, params char[] chars)
         {
-            var p = start;
+            int p = start;
             while (p < message.Length && chars.Contains(message[p]))
+            {
                 p++;
+            }
+
             return p;
         }
         public static int SkipUntil(this string message, int start, params char[] chars)
         {
-            var p = start;
+            int p = start;
             while (p < message.Length && !chars.Contains(message[p]))
+            {
                 p++;
+            }
+
             return p;
         }
 
         public static void AddRange(this IList<NameValuePair> dataList, IList<NameValuePair> nv)
         {
-            foreach (var prm in nv)
+            foreach (NameValuePair prm in nv)
+            {
                 dataList.Add(prm);
+            }
         }
 
         public static void Add(this IList<NameValuePair> dataList, string name, string value)

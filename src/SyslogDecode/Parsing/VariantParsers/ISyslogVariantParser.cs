@@ -4,7 +4,7 @@
 // *                                                       *
 // ********************************************************/
 
-namespace SyslogDecode.Parsing
+namespace SyslogDecode.Parsing.VariantParsers
 {
     /// <summary>General interface for a parser for specific variant/version of syslog. </summary>
     /// <remarks>

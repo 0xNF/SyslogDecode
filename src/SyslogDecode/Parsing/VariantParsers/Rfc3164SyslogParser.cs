@@ -4,7 +4,7 @@
 // *                                                       *
 // ********************************************************/
 
-namespace SyslogDecode.Parsing
+namespace SyslogDecode.Parsing.VariantParsers
 {
     /// <summary>Parses old-style, BSD syslog, RFC-3164. See https://tools.ietf.org/html/rfc3164 </summary>
     public class Rfc3164SyslogParser : ISyslogVariantParser
@@ -13,18 +13,20 @@ namespace SyslogDecode.Parsing
         public bool TryParse(ParserContext ctx)
         {
             if (!TimestampParseHelper.TryParseTimestamp(ctx))
+            {
                 return false;
+            }
 
-            var entry = ctx.ParsedMessage;
-            entry.PayloadType = Model.PayloadType.Rfc3164; 
+            Model.ParsedSyslogMessage entry = ctx.ParsedMessage;
+            entry.PayloadType = Model.PayloadType.Rfc3164;
             //Next - host name and proc name
             entry.Header.HostName = ctx.ReadWord();
             ctx.SkipSpaces();
-            var procStart = ctx.Position; 
-            var procEnd = ctx.Text.SkipUntil(procStart + 1, ' ', ':', ',');
+            int procStart = ctx.Position;
+            int procEnd = ctx.Text.SkipUntil(procStart + 1, ' ', ':', ',');
             if (procEnd < ctx.Text.Length)
             {
-                var proc = ctx.Text.Substring(procStart, procEnd - procStart);
+                string proc = ctx.Text.Substring(procStart, procEnd - procStart);
                 entry.Header.ProcId = proc;
                 ctx.Position = procEnd + 1;
             }
@@ -34,7 +36,7 @@ namespace SyslogDecode.Parsing
                 ctx.SkipSpaces();
                 entry.Message = ctx.Text.Substring(ctx.Position);
             }
-            return true; 
+            return true;
         }
 
     }

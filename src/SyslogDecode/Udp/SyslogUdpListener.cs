@@ -4,44 +4,45 @@
 // *                                                       *
 // ********************************************************/
 
+using SyslogDecode.Common;
+using SyslogDecode.Model;
+using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using ErrorEventArgs = SyslogDecode.Common.ErrorEventArgs;
+
 namespace SyslogDecode.Udp
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Net;
-    using System.Net.Sockets;
-    using System.Text;
-    using System.Threading;
-    using SyslogDecode.Common;
-    using SyslogDecode.Model;
-
     /// <summary>
     /// Listens on the specified IP address and port, and broadcasts received UPD packets to any subscribed observers.
     /// </summary>
-    public class SyslogUdpListener: Observable<RawSyslogMessage>, IDisposable
+    public class SyslogUdpListener : Observable<RawSyslogMessage>, IDisposable
     {
         /// <summary>Default UDP buffer size, 1 Gb. </summary>
         public const int DefaultUdpBufferSize = 1 * 1024 * 1024 * 1024; // 1 GB
-        public UdpClient PortListener { get; private set; }
-        public event EventHandler<ErrorEventArgs> Error;
-        public readonly EpsCounter InputEpsCounter = new EpsCounter("UdpEps");
+        public UdpClient? PortListener { get; private set; }
+        public event EventHandler<ErrorEventArgs>? Error;
+        public readonly EpsCounter InputEpsCounter = new("UdpEps");
         public long PacketCount => InputEpsCounter.CurrentItemCount;
-        public event EventHandler<ItemEventArgs<RawSyslogMessage>> Received; 
+        public event EventHandler<ItemEventArgs<RawSyslogMessage>>? Received;
 
-        private Thread _thread; 
+        private Thread? _thread;
         private bool _running;
         private long _packetCount;
-        private bool _disposeClientOnDispose;
+        private readonly bool _disposeClientOnDispose;
 
         /// <summary>Creates a new instance of the SyslogUdpListener. </summary>
         /// <param name="address">The IP address, optional. Defaults to local address. Use it if you need to connect the listener to the port on a specific 
         /// network card with non-default local address.</param>
         /// <param name="port">UDP port, defaults to 514.</param>
         /// <param name="bufferSize">UDP buffer size. Defaults to 1 Gb, recommended for high-rate dedicated syslog servers.</param>
-        public SyslogUdpListener(IPAddress address = null, int port = 514, int bufferSize = DefaultUdpBufferSize )
+        public SyslogUdpListener(IPAddress? address = null, int port = 514, int bufferSize = DefaultUdpBufferSize)
         {
-            address = address ?? IPAddress.Parse("127.0.0.1");
-            var endPoint = new IPEndPoint(address, port);
+            address ??= IPAddress.Parse("127.0.0.1");
+            IPEndPoint endPoint = new(address, port);
             PortListener = new UdpClient(endPoint);
             PortListener.Client.ReceiveBufferSize = bufferSize;
             _disposeClientOnDispose = true;
@@ -53,19 +54,23 @@ namespace SyslogDecode.Udp
             _disposeClientOnDispose = false;
         }
 
-        /// <summary>Starts the listener. </summary>
+        /// <summary>Starts the listener.PortListenr must not be null at this point </summary>
+        /// <exception cref="ArgumentNullException">If PortListener is null</exception>
         public void Start()
         {
             if (_running)
             {
-                return; 
+                return;
             }
+
             _running = true;
 
             // Important: we need real high-priority thread here, not pool thread from Task.Run()
             // Note: going with multiple threads here results in broken messages, the received message gets cut-off
-            _thread = new Thread(RunListenerLoop);
-            _thread.Priority = ThreadPriority.Highest;
+            _thread = new Thread(RunListenerLoop)
+            {
+                Priority = ThreadPriority.Highest
+            };
             _thread.Start();
         }
 
@@ -73,26 +78,41 @@ namespace SyslogDecode.Udp
         public void Stop()
         {
             if (!_running)
+            {
                 return;
+            }
+
             while (GetUdpBufferBytesAvailable() > 0)
+            {
                 Thread.Sleep(10);
-            PortListener.Close();
+            }
+
+            PortListener?.Close();
             _running = false;
             Thread.Sleep(10);
         }
 
+        /// <summary>
+        /// Runs while _running is true and consumes UDP events. Failure to parse a syslog results in an error that is silently ignored.
+        /// </summary>
+        /// <exception cref="ArgumentNullException">If PortListener is null</exception>
         private void RunListenerLoop()
         {
+            if (PortListener == null)
+            {
+                throw new ArgumentNullException("UDP `PortListener` was null, so cannot start listening on UDP.");
+            }
+
             try
             {
-                var remoteIp = new IPEndPoint(IPAddress.Any, 0);
+                IPEndPoint remoteIp = new(IPAddress.Any, 0);
                 while (_running)
                 {
-                    var bytes = PortListener.Receive(ref remoteIp);
-                    var message = Encoding.UTF8.GetString(bytes); // See notes on encoding at the end of this file
-                    var msg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = remoteIp.Address, Message = message };
-                    Interlocked.Increment(ref _packetCount);
-                    InputEpsCounter.Add(1); 
+                    byte[] bytes = PortListener!.Receive(ref remoteIp); // Not null here because this is only called by .Start() which ensures PortListener is set
+                    string message = Encoding.UTF8.GetString(bytes); // See notes on encoding at the end of this file
+                    RawSyslogMessage msg = new() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = remoteIp.Address, Message = message };
+                    _ = Interlocked.Increment(ref _packetCount);
+                    _ = InputEpsCounter.Add(1);
                     Broadcast(msg);
                     Received?.Invoke(this, new ItemEventArgs<RawSyslogMessage>(msg));
                 }
@@ -100,8 +120,11 @@ namespace SyslogDecode.Udp
             catch (Exception ex)
             {
                 if (!_running)
+                {
                     return; // it is closing socket
-                OnError(ex); 
+                }
+
+                OnError(ex);
             }
         }
 
@@ -115,17 +138,16 @@ namespace SyslogDecode.Udp
             if (_disposeClientOnDispose && PortListener != null)
             {
                 PortListener.Dispose();
-                PortListener = null; 
+                PortListener = null;
             }
+            GC.SuppressFinalize(this);
         }
 
         public int GetUdpBufferBytesAvailable()
         {
             try
             {
-                if (PortListener == null)
-                    return 0;
-                return PortListener.Available;
+                return PortListener == null ? 0 : PortListener.Available;
             }
             catch
             {
@@ -136,7 +158,7 @@ namespace SyslogDecode.Udp
         /// <summary>Retrieves the health data.</summary>
         /// <param name="data">Data container.</param>
         /// <param name="prefix">Optional key prefix.</param>
-        public void AddHealthData(IDictionary<string, object> data, string prefix = null)
+        public void AddHealthData(IDictionary<string, object> data, string? prefix = null)
         {
             data[prefix + DataKeyPacketCount] = PacketCount;
             data[prefix + DataKeyInputEps] = InputEpsCounter.ReadEps();

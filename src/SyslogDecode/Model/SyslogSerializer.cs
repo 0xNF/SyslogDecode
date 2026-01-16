@@ -4,8 +4,7 @@
 // *                                                       *
 // ********************************************************/
 
-using SyslogDecode.Model;
-using SyslogDecode.Parsing;
+using SyslogDecode.Parsing.VariantParsers;
 using System.Collections.Generic;
 using System.Text;
 
@@ -23,33 +22,33 @@ namespace SyslogDecode.Model
         private const char Escape = '\\';
         private const char DQuote = '"';
 
-        static char[] _charsToEscape = new char[] { DQuote, Escape, Rbr }; //according to RFC-5424 these must be escaped
+        private static readonly char[] _charsToEscape = [DQuote, Escape, Rbr]; //according to RFC-5424 these must be escaped
 
-        public static string TimestampFormat = "yyyy'-'MM'-'ddTHH:mm:ss.fffZ";
+        public const string TimestampFormat = "yyyy'-'MM'-'ddTHH:mm:ss.fffZ";
 
         public static string Serialize(ParsedSyslogMessage entry)
         {
-            var writer = new StringBuilder();
+            StringBuilder writer = new();
             writer.WriteHeader(entry);
             writer.WriteStructuredData(entry.StructuredData5424);
             if (!string.IsNullOrEmpty(entry.Message))
             {
-                writer.Append(SyslogChars.Space);
-                writer.Append(entry.Message);
+                _ = writer.Append(SyslogChars.Space);
+                _ = writer.Append(entry.Message);
             }
-            return writer.ToString(); 
+            return writer.ToString();
         }
 
         private static void WriteHeader(this StringBuilder writer, ParsedSyslogMessage entry)
         {
-            writer.Append('<');
-            var pri = GetPriority(entry);
-            writer.Append(pri);
-            writer.Append('>');
-            writer.Append('1');
-            writer.Append(Space);
-            var header = entry.Header; 
-            var tsStr = header.Timestamp == null ? string.Empty : header.Timestamp.Value.ToString(TimestampFormat);
+            _ = writer.Append('<');
+            int pri = GetPriority(entry);
+            _ = writer.Append(pri);
+            _ = writer.Append('>');
+            _ = writer.Append('1');
+            _ = writer.Append(Space);
+            SyslogHeader header = entry.Header;
+            string tsStr = header.Timestamp == null ? string.Empty : header.Timestamp.Value.ToString(TimestampFormat);
             writer.AppendWordOrNil(tsStr);
             writer.AppendWordOrNil(header.HostName);
             writer.AppendWordOrNil(header.AppName);
@@ -57,62 +56,60 @@ namespace SyslogDecode.Model
             writer.AppendWordOrNil(header.MsgId);
         }
 
-        private static void AppendWordOrNil(this StringBuilder writer, string word)
+        private static void AppendWordOrNil(this StringBuilder writer, string? word)
         {
-            if (string.IsNullOrWhiteSpace(word))
-            {
-                writer.Append(NilChar);
-            }
-            else
-            {
-                writer.Append(word);
-            }
-            writer.Append(Space);
+            _ = string.IsNullOrWhiteSpace(word) ? writer.Append(NilChar) : writer.Append(word);
+            _ = writer.Append(Space);
         }
 
         private static int GetPriority(this ParsedSyslogMessage entry)
         {
-            return ((int)entry.Facility) * 8 + (int)entry.Severity;
+            return (((int)entry.Facility) * 8) + (int)entry.Severity;
         }
 
         private static void WriteStructuredData(this StringBuilder writer, IDictionary<string, IList<NameValuePair>> structuredData)
         {
             if (structuredData == null || structuredData.Count == 0)
             {
-                writer.Append(NilChar);
-                writer.Append(Space);
-                return; 
+                _ = writer.Append(NilChar);
+                _ = writer.Append(Space);
+                return;
             }
 
-            foreach(var de in structuredData)
+            foreach (KeyValuePair<string, IList<NameValuePair>> de in structuredData)
             {
-                var elemName = de.Key;
-                var paramList = de.Value; 
-                writer.Append(Lbr);
-                writer.Append(elemName);
-                foreach(var prm in paramList)
+                string elemName = de.Key;
+                IList<NameValuePair> paramList = de.Value;
+                _ = writer.Append(Lbr);
+                _ = writer.Append(elemName);
+                foreach (NameValuePair prm in paramList)
                 {
-                    writer.Append(Space);
-                    writer.Append(prm.Name);
-                    writer.Append('=');
-                    var prmValue = EscapeParamValue(prm.Value);
-                    writer.Append(DQuote);
-                    writer.Append(prmValue);
-                    writer.Append(DQuote);
+                    _ = writer.Append(Space);
+                    _ = writer.Append(prm.Name);
+                    _ = writer.Append('=');
+                    string prmValue = EscapeParamValue(prm.Value);
+                    _ = writer.Append(DQuote);
+                    _ = writer.Append(prmValue);
+                    _ = writer.Append(DQuote);
                 }
-                writer.Append(Rbr);
+                _ = writer.Append(Rbr);
             }
         }
 
         private static string EscapeParamValue(string value)
         {
             if (string.IsNullOrEmpty(value))
-                return string.Empty; 
-            if(value.IndexOfAny(_charsToEscape) < 0)
+            {
+                return string.Empty;
+            }
+
+            if (value.IndexOfAny(_charsToEscape) < 0)
+            {
                 return value;
+            }
             // replace with escaped
-            var escaped = value.Replace(@"\", @"\\").Replace(@"""", @"\""").Replace(@"]", @"\]");
-            return escaped; 
+            string escaped = value.Replace(@"\", @"\\").Replace(@"""", @"\""").Replace(@"]", @"\]");
+            return escaped;
         }
     }
 }

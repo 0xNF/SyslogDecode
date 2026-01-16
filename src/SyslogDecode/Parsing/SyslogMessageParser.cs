@@ -4,13 +4,12 @@
 // *                                                       *
 // ********************************************************/
 
+using SyslogDecode.Model;
+using SyslogDecode.Parsing.Extractors;
+using SyslogDecode.Parsing.VariantParsers;
+
 namespace SyslogDecode.Parsing
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using SyslogDecode.Model;
-
     /// <summary>Configurable syslog message parser for multiple message formats (RFCs). </summary>
     /// <remarks>
     ///    Holds a configurable list of parsers for handling specific version/formats, and a 
@@ -18,8 +17,8 @@ namespace SyslogDecode.Parsing
     /// </remarks>
     public class SyslogMessageParser
     {
-        public readonly List<ISyslogVariantParser> VariantParsers = new List<ISyslogVariantParser>();
-        public readonly List<IValuesExtractor> ValueExtractors = new List<IValuesExtractor>();
+        public readonly List<ISyslogVariantParser> VariantParsers = [];
+        public readonly List<IValuesExtractor> ValueExtractors = [];
 
         /// <summary> Creates and configures a default parser, with support for all major syslog versions 
         ///     and IP addresses extractor. 
@@ -31,8 +30,8 @@ namespace SyslogDecode.Parsing
         /// </remarks>
         public static SyslogMessageParser CreateDefault()
         {
-            var parser = new SyslogMessageParser();
-            parser.AddVariantParsers(new Rfc5424SyslogParser(), new KeyValueListParser(), 
+            SyslogMessageParser parser = new();
+            parser.AddVariantParsers(new Rfc5424SyslogParser(), new KeyValueListParser(),
                                      new Rfc3164SyslogParser(), new PlainTextParser());
             parser.AddValueExtractors(new IpAddressesExtractor());
             return parser;
@@ -49,7 +48,7 @@ namespace SyslogDecode.Parsing
         /// <param name="extractors">A list of extractors.</param>
         public void AddValueExtractors(params IValuesExtractor[] extractors)
         {
-            ValueExtractors.AddRange(extractors); 
+            ValueExtractors.AddRange(extractors);
         }
 
         /// <summary>Parses a raw syslog message and returns a parsed message object. </summary>
@@ -57,103 +56,128 @@ namespace SyslogDecode.Parsing
         /// <returns></returns>
         public ParsedSyslogMessage Parse(RawSyslogMessage rawMessage)
         {
-            var ctx = new ParserContext(rawMessage);
+            ParserContext ctx = new(rawMessage);
             Parse(ctx);
-            return ctx.ParsedMessage; 
+            return ctx.ParsedMessage;
+        }
+
+        /// <summary>Attempts to parse raw syslog message and returns the parsed message object as the out parsed parameter </summary>
+        /// <param name="rawMessage">Raw syslog message.</param>
+        /// <returns></returns>
+        public bool TryParse(RawSyslogMessage rawMessage, out ParsedSyslogMessage? parsed)
+        {
+            parsed = default;
+            ParserContext ctx = new(rawMessage);
+            try
+            {
+                Parse(ctx);
+                parsed = ctx.ParsedMessage;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
 
         internal void Parse(ParserContext context)
         {
             if (!context.ReadSyslogPrefix())
+            {
                 return;
+            }
+
             context.AssignFacilitySeverity();
 
-            foreach (var parser in VariantParsers)
+            foreach (ISyslogVariantParser parser in VariantParsers)
             {
-                context.Reset(); 
+                _ = context.Reset();
                 try
                 {
                     if (parser.TryParse(context))
                     {
                         ExtractDataFromMessage(context);
                         BuildAllDataDictionary(context.ParsedMessage); // put all parsed/extracted data into AllData dictionary
-                        return; 
+                        return;
                     }
                 }
                 catch (Exception ex)
                 {
                     context.ErrorMessages.Add(ex.ToString() + " message: " + context.Text);
                     ex.Data["SyslogMessage"] = context.Text;
-                    throw; 
+                    throw;
                 }
             }
         }
 
         private void ExtractDataFromMessage(ParserContext ctx)
         {
-            var entry = ctx.ParsedMessage;
-            var data = entry.ExtractedTuples;
+            ParsedSyslogMessage entry = ctx.ParsedMessage;
+            IList<NameValuePair> data = entry.ExtractedTuples;
             // For RFC-5424 and KeyValue payload types, everything is already structured and extracted
             // But we want to run IP values detector against all of them
             switch (entry.PayloadType)
             {
                 case PayloadType.Rfc5424:
-                    var allParams = entry.StructuredData5424.SelectMany(e => e.Value).ToList();
-                    var Ips = IpAddressesExtractor.ExtractIpAddresses(allParams);
+                    IEnumerable<NameValuePair> allParams = entry.StructuredData5424.SelectMany(e => e.Value);
+                    IList<NameValuePair> Ips = IpAddressesExtractor.ExtractIpAddresses(allParams);
                     data.AddRange(Ips);
-                    return; 
+                    return;
 
                 case PayloadType.KeyValuePairs:
-                    var Ips2 = IpAddressesExtractor.ExtractIpAddresses(entry.ExtractedTuples);
-                    data.AddRange(Ips2); 
-                    return; 
+                    IList<NameValuePair> Ips2 = IpAddressesExtractor.ExtractIpAddresses(entry.ExtractedTuples);
+                    data.AddRange(Ips2);
+                    return;
             }
 
             // otherwise run extractors from plain message
             if (entry == null || string.IsNullOrWhiteSpace(entry.Message) || entry.Message.Length < 10)
-                return;
-
-            foreach(var extr in ValueExtractors)
             {
-                var values = extr.ExtractValues(ctx); 
+                return;
+            }
+
+            foreach (IValuesExtractor extr in ValueExtractors)
+            {
+                IList<NameValuePair> values = extr.ExtractValues(ctx);
                 if (values != null && values.Count > 0)
                 {
-                    data.AddRange(values); 
+                    data.AddRange(values);
                 }
             }
         }
 
         /// <summary>Merges all parsed and extracted data into a single Data dictionary. </summary>
         /// <param name="message"></param>
-        private void BuildAllDataDictionary(ParsedSyslogMessage message)
+        private static void BuildAllDataDictionary(ParsedSyslogMessage message)
         {
             // ExtractedData is key-values extracted from syslog body by extractors
             // entry.StructuredData is RFC-5424 structured data; 
-            var allTuples = new List<NameValuePair>();
-            allTuples.AddRange(message.ExtractedTuples);
+            List<NameValuePair> allTuples = [.. message.ExtractedTuples];
 
             // This is RFC-5424 specific data, structured in its own way - we take all parameters (kv pairs) from there
-            var structData = message.StructuredData5424;
+            IDictionary<string, IList<NameValuePair>> structData = message.StructuredData5424;
             if (structData != null)
             {
-                var structDataParams = structData.SelectMany(de => de.Value).ToList();
+                IEnumerable<NameValuePair> structDataParams = structData.SelectMany(de => de.Value);
                 allTuples.AddRange(structDataParams);
             }
 
             // now convert to dictionary; first group values by name
-            var groupedTuples = allTuples.GroupBy(p => p.Name, p => p.Value).ToDictionary(g => g.Key, g => g.ToArray());
+            Dictionary<string, string[]> groupedTuples = allTuples.GroupBy(p => p.Name, p => p.Value).ToDictionary(g => g.Key, g => g.ToArray());
             // copy to final dictionary - keep multiple values as an array; 
             // for single value put it as a single object (not object[1]); - except for IP addresses - these are always arrays, even if there's only one
             message.Data.Clear();
-            foreach (var kv in groupedTuples)
+            foreach (KeyValuePair<string, string[]> kv in groupedTuples)
             {
                 if (kv.Value.Length > 1 || kv.Key == "IPv4" || kv.Key == "IPv6")
                 {
                     message.Data[kv.Key] = kv.Value; //array
                 }
                 else
+                {
                     message.Data[kv.Key] = kv.Value[0]; //single value
+                }
             }
         }
 

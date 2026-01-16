@@ -4,11 +4,11 @@
 // *                                                       *
 // ********************************************************/
 
+using System;
+using System.Threading;
+
 namespace SyslogDecode.Common
 {
-    using System;
-    using System.Threading;
-
     /// <summary>Maintains event counter and computes EPS (events per second) on demand. </summary>
     public class EpsCounter
     {
@@ -19,11 +19,11 @@ namespace SyslogDecode.Common
         /// </summary>
         public long CurrentItemCount => _currentItemCount;
 
-        private TimeSpan _minReadInterval; 
+        private TimeSpan _minReadInterval;
         private long _currentItemCount;
-        private LastReadData _lastRead; 
+        private LastReadData _lastRead;
 
-        class LastReadData
+        private class LastReadData
         {
             internal DateTime DateTime;
             internal long CounterValue;
@@ -34,7 +34,7 @@ namespace SyslogDecode.Common
         {
             Name = name;
             _minReadInterval = TimeSpan.FromSeconds(minReadIntervalSec);
-            _lastRead = new LastReadData() { DateTime = AppTime.UtcNow }; 
+            _lastRead = new LastReadData() { DateTime = AppTime.UtcNow };
         }
 
         /// <summary>
@@ -63,17 +63,19 @@ namespace SyslogDecode.Common
         public int ReadEps()
         {
             // if not enough time since last read, return old value
-            var utcNow = AppTime.UtcNow;
-            var lastRead = _lastRead;
-            var time = utcNow.Subtract(lastRead.DateTime);
+            DateTime utcNow = AppTime.UtcNow;
+            LastReadData lastRead = _lastRead;
+            TimeSpan time = utcNow.Subtract(lastRead.DateTime);
             if (time < _minReadInterval)
+            {
                 return lastRead.Eps; //return old value
+            }
 
-            var curr = _currentItemCount;
-            var eps = (curr - lastRead.CounterValue) / time.TotalSeconds;
-            var intEps = (int)eps;
+            long curr = _currentItemCount;
+            double eps = (curr - lastRead.CounterValue) / time.TotalSeconds;
+            int intEps = (int)eps;
             _lastRead = new LastReadData() { CounterValue = curr, DateTime = utcNow, Eps = intEps };
-            return intEps; 
+            return intEps;
         }
 
         /// <summary>
@@ -83,14 +85,14 @@ namespace SyslogDecode.Common
         /// <returns>int - the most recent events per second.</returns>
         public int ReadEps(long newCounterValue)
         {
-            var curr = _currentItemCount; 
+            long curr = _currentItemCount;
             if (newCounterValue < curr) //reset it
             {
                 _currentItemCount = 0;
-                _lastRead = new LastReadData() { CounterValue = curr, DateTime = AppTime.UtcNow};
-                return 0; 
+                _lastRead = new LastReadData() { CounterValue = curr, DateTime = AppTime.UtcNow };
+                return 0;
             }
-            return ReadEps(); 
+            return ReadEps();
         }
     }
 }

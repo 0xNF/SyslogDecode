@@ -4,13 +4,9 @@
 // *                                                       *
 // ********************************************************/
 
+
 namespace SyslogDecode.Common
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Threading;
-
     /// <summary>
     ///     Base class for components implementing the <see cref="IObservable{T}" /> interface.
     /// </summary>
@@ -25,8 +21,8 @@ namespace SyslogDecode.Common
 
         // We use copy, add/remove, replace method when adding/removing subscriptions
         // As a benefit, when we call OnNext on each subscriber, we iterate the list without locks
-        private IList<Subscription> _subscriptions = new List<Subscription>();
-        private readonly object _lock = new object(); 
+        private IList<Subscription> _subscriptions = [];
+        private readonly Lock _lock = new();
 
         #region IObservable implementation
 
@@ -35,7 +31,7 @@ namespace SyslogDecode.Common
         /// <returns>A disposable subscription object. Disposing the object cancels the subscription.</returns>
         public IDisposable Subscribe(IObserver<T> observer)
         {
-            return AddSubscription(observer); 
+            return AddSubscription(observer);
         }
 
         #endregion
@@ -44,7 +40,7 @@ namespace SyslogDecode.Common
         /// <param name="observer">An observer instance.</param>
         public void Unsubscribe(IObserver<T> observer)
         {
-            RemoveSubscription(observer); 
+            RemoveSubscription(observer);
         }
 
         /// <summary>Broadcasts data. Calls the OnNext method of all subscribed observers. </summary>
@@ -52,7 +48,7 @@ namespace SyslogDecode.Common
         /// <remarks>The subscribers are notified according to the broadcast mode - in sync or async manner.</remarks>
         public virtual void Broadcast(T item)
         {
-            var sList = _subscriptions;
+            IList<Subscription> sList = _subscriptions;
             for (int i = 0; i < sList.Count; i++)
             {
                 sList[i].Observer.OnNext(item);
@@ -63,7 +59,7 @@ namespace SyslogDecode.Common
         /// <param name="error">The exception to broadcast.</param>
         protected virtual void BroadcastError(Exception error)
         {
-            var sList = _subscriptions;
+            IList<Subscription> sList = _subscriptions;
             for (int i = 0; i < sList.Count; i++)
             {
                 sList[i].Observer.OnError(error);
@@ -73,7 +69,7 @@ namespace SyslogDecode.Common
         /// <summary>Calls OnCompleted method of all subscribers. </summary>
         protected void BroadcastOnCompleted()
         {
-            var sList = _subscriptions;
+            IList<Subscription> sList = _subscriptions;
             for (int i = 0; i < sList.Count; i++)
             {
                 sList[i].Observer.OnCompleted();
@@ -87,11 +83,11 @@ namespace SyslogDecode.Common
         {
             lock (_lock)
             {
-                var newList = new List<Subscription>(_subscriptions);
-                var subscr = new Subscription() { Observable = this, Observer = observer };
+                List<Subscription> newList = [.. _subscriptions];
+                Subscription subscr = new() { Observable = this, Observer = observer };
                 newList.Add(subscr);
-                Interlocked.Exchange(ref _subscriptions, newList);
-                return subscr; 
+                _ = Interlocked.Exchange(ref _subscriptions, newList);
+                return subscr;
             }
         }
 
@@ -99,12 +95,12 @@ namespace SyslogDecode.Common
         {
             lock (_lock)
             {
-                var newList = new List<Subscription>(_subscriptions);
-                var subscr = newList.FirstOrDefault(s => s.Observer == observer);
+                List<Subscription> newList = [.. _subscriptions];
+                Subscription? subscr = newList.FirstOrDefault(s => s.Observer == observer);
                 if (subscr != null)
                 {
-                    newList.Remove(subscr);
-                    Interlocked.Exchange(ref _subscriptions, newList);
+                    _ = newList.Remove(subscr);
+                    _ = Interlocked.Exchange(ref _subscriptions, newList);
                 }
             }
         }
@@ -112,8 +108,8 @@ namespace SyslogDecode.Common
         /// <summary>Represents a subscription for an observable source. </summary>
         internal class Subscription : IDisposable
         {
-            public Observable<T> Observable;
-            public IObserver<T> Observer;
+            public required Observable<T> Observable;
+            public required IObserver<T> Observer;
 
             public void Dispose()
             {

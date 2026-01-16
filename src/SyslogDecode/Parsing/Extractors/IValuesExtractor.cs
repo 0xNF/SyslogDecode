@@ -4,11 +4,12 @@
 // *                                                       *
 // ********************************************************/
 
-namespace SyslogDecode.Parsing
-{
-    using SyslogDecode.Model;
-    using System.Collections.Generic;
+using SyslogDecode.Model;
+using SyslogDecode.Parsing.VariantParsers;
+using System.Collections.Generic;
 
+namespace SyslogDecode.Parsing.Extractors
+{
     /// <summary>
     ///     A value extractor is a component for extracting values from free-form message part of syslog, for ex: IP addresses. 
     ///     The extracted values are placed into the StructuredData dictionary of the syslog entry. 
