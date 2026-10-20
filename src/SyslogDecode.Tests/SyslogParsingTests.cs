@@ -195,6 +195,32 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestMalformedStructuredDataIsKeptInMessage()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<174>1 - Durotar Orgrimmar - - [a@1 b=\"c\"][d@1 e=\"unterminated] the message";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual("Orgrimmar", parsedMsg.Header.AppName);
+            Assert.IsEmpty(parsedMsg.StructuredData5424);
+            Assert.AreEqual("[a@1 b=\"c\"][d@1 e=\"unterminated] the message", parsedMsg.Message);
+            Assert.IsNotEmpty(parsedMsg.ErrorMessages);
+        }
+
+        [TestMethod]
+        public void TestRepeatedStructuredDataIdKeepsEveryParameter()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<174>1 - Durotar Orgrimmar - - [a@1 b=\"1\"][x@1 y=\"2\"][a@1 c=\"3\"] msg";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            CollectionAssert.AreEqual(new[] { "b=1", "c=3" }, parsedMsg.StructuredData5424["a@1"].Select(p => p.Name + "=" + p.Value).ToArray());
+            Assert.AreEqual("2", parsedMsg.StructuredData5424["x@1"][0].Value);
+        }
+
+        [TestMethod]
         public void TestLargeStructuredDataValueParsesInLinearTime()
         {
             var parser = SyslogMessageParser.CreateDefault();

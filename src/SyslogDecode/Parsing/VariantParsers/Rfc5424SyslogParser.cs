@@ -77,6 +77,7 @@ namespace SyslogDecode.Parsing.VariantParsers
             }
 
             IDictionary<string, IList<NameValuePair>> data = ctx.ParsedMessage.StructuredData5424;
+            int start = ctx.Position;
             try
             {
                 if (ctx.Current != SyslogChars.Lbr)
@@ -93,13 +94,27 @@ namespace SyslogDecode.Parsing.VariantParsers
                     {
                         return;
                     }
-                    data[elem.Item1] = elem.Item2;
+                    // RFC-5424 allows an SD-ID once; a repeated one adds its parameters to the first instead of replacing them
+                    if (data.TryGetValue(elem.Item1, out IList<NameValuePair>? existing))
+                    {
+                        foreach (NameValuePair prm in elem.Item2)
+                        {
+                            existing.Add(prm);
+                        }
+                    }
+                    else
+                    {
+                        data[elem.Item1] = elem.Item2;
+                    }
                 }
 
             }
             catch (Exception ex)
             {
+                // A malformed element leaves the text from the first '[' on to MSG, so that none of it is lost
                 ctx.AddError(ex.Message);
+                data.Clear();
+                ctx.Position = start;
             }
         }
 
