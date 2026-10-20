@@ -17,6 +17,7 @@ namespace SyslogDecode.TestLoadApp
     using Tx.Network.Snmp;
 
     using SyslogDecode.Parsing;
+    using SyslogDecode.Parsing.VariantParsers;
     using SyslogDecode.Udp;
 
     public static class PCapFileProcessor

@@ -9,6 +9,7 @@ namespace SyslogDecode.Tests
 {
     using System;
     using System.Linq;
+    using System.Net;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using SyslogDecode.Parsing;
     using System.Text;
@@ -29,7 +30,7 @@ namespace SyslogDecode.Tests
 
             // Test 1 - simple message
             var text1 = header + " " + structData + " " + customMsg;
-            var rawMsg = new RawSyslogMessage() { Message = text1 };
+            var rawMsg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message =text1 };
             var parsedMsg = parser.Parse(rawMsg);
             Assert.IsNotNull(parsedMsg);
             Assert.AreEqual(0, parsedMsg.ErrorMessages.Count);
@@ -47,7 +48,7 @@ namespace SyslogDecode.Tests
             var structDataWithEscapedChars = $"[exEscapes@123 escParam=\"{esc}{esc}abc{esc}{esc}def{esc}{dq}ghi\"]";
 
             var text2 = header + " " + structDataWithEscapedChars + " " + customMsg;
-            rawMsg = new RawSyslogMessage() { Message = text2 };
+            rawMsg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message =text2 };
             parsedMsg = parser.Parse(rawMsg);
             Assert.IsNotNull(parsedMsg);
             Assert.AreEqual(0, parsedMsg.ErrorMessages.Count);
@@ -63,7 +64,7 @@ namespace SyslogDecode.Tests
             // The parser should strip the BOM
             var msgWithBOM = PrependBOM(customMsg);
             var text3 = header + " " + structDataWithEscapedChars + " " + msgWithBOM;
-            rawMsg = new RawSyslogMessage() { Message = text3 };
+            rawMsg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message =text3 };
             parsedMsg = parser.Parse(rawMsg);
             Assert.IsNotNull(parsedMsg);
             Assert.AreEqual(customMsg, parsedMsg.Message, "Message does not match.");
@@ -93,13 +94,13 @@ namespace SyslogDecode.Tests
 
             // Parser failure 1
             msg = "<28>Jun 30 14:29:50 Sg2-0102-0201-14T1 snmp#snmp-subagent"; // RFC-3164: no Message element
-            rawMsg = new RawSyslogMessage() { Message = msg };
+            rawMsg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message =msg };
             parsedMsg = parser.Parse(rawMsg);
             Assert.IsTrue(parsedMsg.ErrorMessages.Count == 0, "Failed to parse RFC-3164 message without 'Message' element");
 
             // Parser failure 2
             msg = "<28>Jun 30 14:29:50 Sg2-0102-0201-14T1 "; //  RFC-3164: no procId
-            rawMsg = new RawSyslogMessage() { Message = msg };
+            rawMsg = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message =msg };
             parsedMsg = parser.Parse(rawMsg);
             Assert.IsTrue(parsedMsg.ErrorMessages.Count == 0, "Failed to parse RFC-3164 message without ProcId element");
 
