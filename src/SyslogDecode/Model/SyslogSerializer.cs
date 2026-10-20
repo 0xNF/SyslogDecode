@@ -6,6 +6,7 @@
 
 using SyslogDecode.Parsing.VariantParsers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 namespace SyslogDecode.Model
@@ -48,7 +49,7 @@ namespace SyslogDecode.Model
             _ = writer.Append('1');
             _ = writer.Append(Space);
             SyslogHeader header = entry.Header;
-            string tsStr = header.Timestamp == null ? string.Empty : header.Timestamp.Value.ToString(TimestampFormat);
+            string tsStr = header.Timestamp == null ? string.Empty : header.Timestamp.Value.ToUniversalTime().ToString(TimestampFormat, CultureInfo.InvariantCulture);
             writer.AppendWordOrNil(tsStr);
             writer.AppendWordOrNil(header.HostName);
             writer.AppendWordOrNil(header.AppName);
