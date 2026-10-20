@@ -175,6 +175,40 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestStructuredDataEscapes()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+
+            // RFC-5424 section 6.3.3: only \" \\ and \] are escapes; any other backslash is an ordinary character
+            foreach (var (escaped, expected) in new[]
+            {
+                (@"C:\temp\new", @"C:\temp\new"),
+                (@"a\""b\\c\]d", @"a""b\c]d"),
+                (@"ends with \\", @"ends with \"),
+            })
+            {
+                var text = $"<174>1 - Durotar Orgrimmar - - [a@1 v=\"{escaped}\"] msg";
+                var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+                Assert.AreEqual(expected, parsedMsg.StructuredData5424["a@1"][0].Value, text);
+                Assert.AreEqual("msg", parsedMsg.Message, text);
+            }
+        }
+
+        [TestMethod]
+        public void TestLargeStructuredDataValueParsesInLinearTime()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var value = string.Concat(Enumerable.Repeat(@"{\""key\"":\""value\""},", 20000));
+            var text = $"<174>1 - Durotar Orgrimmar - - [gravio@19654 attrs=\"{value}\"] msg";
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual(value.Replace(@"\""", @""""), parsedMsg.StructuredData5424["gravio@19654"][0].Value);
+            Assert.IsLessThan(1000, stopwatch.ElapsedMilliseconds, "a 480 KB value with 80,000 escapes");
+        }
+
+        [TestMethod]
         public void TestVariantParserFailureKeepsText()
         {
             var parser = SyslogMessageParser.CreateDefault();

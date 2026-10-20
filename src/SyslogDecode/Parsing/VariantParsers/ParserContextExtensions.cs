@@ -78,29 +78,38 @@ namespace SyslogDecode.Parsing.VariantParsers
             return word;
         }
 
+        /// <summary>Reads a double-quoted value, unescaping \", \\ and \] as RFC-5424 section 6.3.3 does; a backslash before any other character is kept as it is. </summary>
+        /// <exception cref="FormatException">If the value has no closing double quote.</exception>
         public static string ReadQuotedString(this ParserContext ctx)
         {
             _ = ctx.ReadSymbol(SyslogChars.DQuote);
-            string result = string.Empty;
+            StringBuilder result = new();
             int curr = ctx.Position;
             while (true)
             {
                 int next = ctx.Text.IndexOfAny(SyslogChars.QuoteOrEscape, curr);
-                string segment = ctx.Text[curr..next];
-                result += segment;
-                switch (ctx.CharAt(next))
+                if (next < 0)
                 {
-                    case SyslogChars.DQuote:
-                        // we are done
-                        ctx.Position = next + 1; // after dquote
-                        return result;
+                    throw new FormatException("Invalid input, quoted value has no closing '\"'.");
+                }
+                _ = result.Append(ctx.Text, curr, next - curr);
+                if (ctx.CharAt(next) == SyslogChars.DQuote)
+                {
+                    ctx.Position = next + 1; // after dquote
+                    return result.ToString();
+                }
 
-                    case SyslogChars.Escape:
-                        // it is escape symbol, add next char to result, shift to next char and continue loop
-                        result += ctx.CharAt(next + 1);
-                        curr = next + 2;
-                        break;
-                }//switch
+                char escaped = next + 1 < ctx.Text.Length ? ctx.CharAt(next + 1) : '\0';
+                if (escaped is SyslogChars.DQuote or SyslogChars.Escape or SyslogChars.Rbr)
+                {
+                    _ = result.Append(escaped);
+                    curr = next + 2;
+                }
+                else
+                {
+                    _ = result.Append(SyslogChars.Escape);
+                    curr = next + 1;
+                }
             } // loop
         }
 
