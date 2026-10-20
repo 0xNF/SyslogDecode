@@ -26,8 +26,18 @@ namespace SyslogDecode.Parsing.VariantParsers
             int procEnd = ctx.Text.SkipUntil(procStart + 1, ' ', ':', ',');
             if (procEnd < ctx.Text.Length)
             {
-                string proc = ctx.Text.Substring(procStart, procEnd - procStart);
-                entry.Header.ProcId = proc;
+                // RFC-5424 appendix A.1 maps the TAG to APP-NAME, and a "[pid]" after it to PROCID
+                string tag = ctx.Text.Substring(procStart, procEnd - procStart);
+                int bracket = tag.IndexOf('[');
+                if (bracket > 0 && tag.EndsWith(']'))
+                {
+                    entry.Header.AppName = tag[..bracket];
+                    entry.Header.ProcId = tag[(bracket + 1)..^1];
+                }
+                else
+                {
+                    entry.Header.AppName = tag;
+                }
                 ctx.Position = procEnd + 1;
             }
             if (ctx.Position < ctx.Text.Length)

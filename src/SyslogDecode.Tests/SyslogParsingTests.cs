@@ -269,6 +269,27 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestRfc3164TagIsTheAppName()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var month = MonthNames[DateTime.UtcNow.Month - 1];
+
+            foreach (var (text, appName, procId, message) in new[]
+            {
+                ($"<13>{month}  1 12:00:00 Durotar sshd[4242]: Accepted publickey", "sshd", "4242", "Accepted publickey"),
+                ($"<13>{month}  1 12:00:00 Durotar su: session opened", "su", null, "session opened"),
+            })
+            {
+                var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+                Assert.AreEqual(PayloadType.Rfc3164, parsedMsg.PayloadType, text);
+                Assert.AreEqual("Durotar", parsedMsg.Header.HostName, text);
+                Assert.AreEqual(appName, parsedMsg.Header.AppName, text);
+                Assert.AreEqual(procId, parsedMsg.Header.ProcId, text);
+                Assert.AreEqual(message, parsedMsg.Message, text);
+            }
+        }
+
+        [TestMethod]
         public void TestMalformedStructuredDataIsKeptInMessage()
         {
             var parser = SyslogMessageParser.CreateDefault();
