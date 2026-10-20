@@ -56,8 +56,8 @@ namespace SyslogDecode.Parsing.VariantParsers
                     }
                 }
             }
-            bool result = TryParseIfStartsWithYear(ctx) || TryParseTimestampWithMonthName(ctx) ||
-                TryParseIfStartsWithColonThenYear(ctx) || TryParseIfStartsWithSpace(ctx);
+            bool result = TryParseIfStartsWithYear(ctx) || TryParseIfStartsWithColonThenYear(ctx) ||
+                TryParseTimestampWithMonthName(ctx) || TryParseIfStartsWithSpace(ctx);
             return result;
 
         }
@@ -160,7 +160,7 @@ namespace SyslogDecode.Parsing.VariantParsers
                 {
                     day = word;
                 }
-                else if (word.Contains(':') && word.Split(':').Length == 3)
+                else if (word.Contains(':') && word.Split(':').Length == 3 && TimeSpan.TryParse(word, CultureInfo.InvariantCulture, out _))
                 {
                     time = word;
                     lastWord = word;
@@ -192,42 +192,51 @@ namespace SyslogDecode.Parsing.VariantParsers
 
         private static DateTime ConstructDateTime(string year, string month, string day, string time, string? tz)
         {
-            int y = int.Parse(year);
-            int m = Array.IndexOf(_months, month.ToUpperInvariant()) + 1;
-            int d = int.Parse(day);
-            _ = TimeSpan.TryParse(time, out TimeSpan t);
-            DateTime dt = new(y, m, d, t.Hours, t.Minutes, t.Seconds, DateTimeKind.Utc);
-            if (tz != null)
-            {
-                TimeSpan offs = GetTimezoneOffset(tz);
-                dt = dt.Subtract(offs);
-            }
-            return dt;
+            int y = int.Parse(year, CultureInfo.InvariantCulture);
+            int m = MonthNumber(month);
+            int d = int.Parse(day, CultureInfo.InvariantCulture);
+            _ = TimeSpan.TryParse(time, CultureInfo.InvariantCulture, out TimeSpan t);
+            return ToUtc(new DateTime(y, m, d).Add(t), tz);
         }
 
-        private static TimeSpan GetTimezoneOffset(string value)
+        private static int MonthNumber(string month)
         {
-            var ts = value switch
+            return Array.IndexOf(_months, month.ToUpperInvariant()) + 1;
+        }
+
+        /// <summary>Converts a clock time to UTC: from the zone named, or, with no zone, from the receiver's local zone,
+        /// as an RFC-3164 time is the sender's clock and a sender on the same host shares it. </summary>
+        private static DateTime ToUtc(DateTime clock, string? zone)
+        {
+            return zone != null && TryGetZoneOffset(zone, out TimeSpan offset)
+                ? DateTime.SpecifyKind(clock - offset, DateTimeKind.Utc)
+                : DateTime.SpecifyKind(clock, DateTimeKind.Local).ToUniversalTime();
+        }
+
+        private static bool TryGetZoneOffset(string zone, out TimeSpan offset)
+        {
+            TimeSpan? known = zone switch
             {
+                "UTC" or "GMT" => TimeSpan.Zero,
                 "PDT" => TimeSpan.FromHours(-7),
                 "PST" => TimeSpan.FromHours(-8),
-                _ => TimeSpan.Zero,
+                "EDT" => TimeSpan.FromHours(-4),
+                "EST" => TimeSpan.FromHours(-5),
+                "IST" => new TimeSpan(5, 30, 0),
+                "JST" => TimeSpan.FromHours(9),
+                _ => null,
             };
-            return ts;
+            offset = known ?? TimeSpan.Zero;
+            return known.HasValue;
         }
 
 
-        // guess year for a month, most likely current year, but handle new year 
+        // guess year for a month: the current year, unless the month is more than one month ahead of now,
+        // which makes it last year's, as a December entry read in January is
         private static int GuessYear(string month)
         {
             DateTime now = DateTime.UtcNow;
-            int year = now.Year;
-            // If it is Jan, but entry's month is Dec, then it was previous year
-            if (month == "Dec" && now.Month == 0)
-            {
-                year--;
-            }
-            return year;
+            return MonthNumber(month) > now.Month + 1 ? now.Year - 1 : now.Year;
         }
 
         // match entry like  
@@ -238,17 +247,22 @@ namespace SyslogDecode.Parsing.VariantParsers
             int savePos = ctx.Position;
             if (ctx.Match(": ") && (ctx.Match($"{year}") || ctx.Match($"{year - 1}"))) //check prior year
             {
-                // we already matched beyond year; move back: 
+                // we already matched beyond year; move back:
                 ctx.Position = savePos + ": ".Length;
-                string UTC = "PST:"; // "UTC:";
-                int utcPos = ctx.Text.IndexOf(UTC, ctx.Position);
-                if (utcPos > 0)
+                // the time ends at the first known zone followed by a colon, as in " UTC:"
+                (int zonePos, string? zone) = _timezones
+                    .Select(z => (Pos: ctx.Text.IndexOf($" {z}:", ctx.Position, StringComparison.Ordinal), Zone: z))
+                    .Where(found => found.Pos > 0)
+                    .OrderBy(found => found.Pos)
+                    .Select(found => (found.Pos, (string?)found.Zone))
+                    .FirstOrDefault();
+                if (zone != null)
                 {
-                    string dtStr = ctx.Text[ctx.Position..utcPos];
-                    ctx.Position = utcPos + UTC.Length;
-                    if (DateTime.TryParse(dtStr, out DateTime dt))
+                    string dtStr = ctx.Text[ctx.Position..zonePos];
+                    ctx.Position = zonePos + zone.Length + 2;
+                    if (DateTime.TryParse(dtStr, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out DateTime dt))
                     {
-                        ctx.ParsedMessage.Header.Timestamp = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                        ctx.ParsedMessage.Header.Timestamp = ToUtc(dt, zone);
                         return true;
                     }
                 }

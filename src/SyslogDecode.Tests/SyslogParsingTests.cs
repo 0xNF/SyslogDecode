@@ -217,6 +217,57 @@ namespace SyslogDecode.Tests
             }
         }
 
+        private static readonly string[] MonthNames = System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.AbbreviatedMonthNames;
+
+        [TestMethod]
+        public void TestRfc3164TimeWithoutZoneIsTheReceiversLocalTime()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var now = DateTime.UtcNow;
+            var text = $"<13>{MonthNames[now.Month - 1]}  1 12:00:00 Durotar app: msg";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = now, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual(new DateTime(now.Year, now.Month, 1, 12, 0, 0, DateTimeKind.Local).ToUniversalTime(), parsedMsg.Header.Timestamp);
+            Assert.AreEqual(DateTimeKind.Utc, parsedMsg.Header.Timestamp!.Value.Kind);
+        }
+
+        [TestMethod]
+        public void TestRfc3164TimeWithZoneIsConverted()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var now = DateTime.UtcNow;
+            var month = MonthNames[now.Month - 1];
+
+            foreach (var (text, offset) in new[]
+            {
+                ($"<13>{month}  4 17:21:18 JST: Durotar app: msg", TimeSpan.FromHours(9)),
+                ($"<13>{month}  4 17:21:18 PST: Durotar app: msg", TimeSpan.FromHours(-8)),
+                ($"<186>: {now.Year} {month}  4 17:21:18.183 UTC: Durotar app: msg", TimeSpan.Zero),
+                ($"<186>: {now.Year} {month}  4 17:21:18.183 PST: Durotar app: msg", TimeSpan.FromHours(-8)),
+            })
+            {
+                var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = now, SourceIpAddress = IPAddress.Loopback, Message = text });
+                var clock = new DateTime(now.Year, now.Month, 4, 17, 21, 18).AddMilliseconds(text.Contains(".183") ? 183 : 0);
+                Assert.AreEqual(DateTime.SpecifyKind(clock - offset, DateTimeKind.Utc), parsedMsg.Header.Timestamp, text);
+            }
+        }
+
+        [TestMethod]
+        public void TestRfc3164MonthAheadOfNowIsLastYears()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var now = DateTime.UtcNow;
+            // two months ahead of now, as a December entry is in January
+            var month = (now.Month + 1) % 12 + 1;
+            var expectedYear = month > now.Month ? now.Year - 1 : now.Year;
+            var text = $"<13>{MonthNames[month - 1]} 15 12:00:00 Durotar app: msg";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = now, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual(expectedYear, parsedMsg.Header.Timestamp!.Value.ToLocalTime().Year, text);
+        }
+
         [TestMethod]
         public void TestMalformedStructuredDataIsKeptInMessage()
         {
