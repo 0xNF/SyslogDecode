@@ -29,8 +29,11 @@ namespace SyslogDecode.Udp
         public long PacketCount => InputEpsCounter.CurrentItemCount;
         public event EventHandler<ItemEventArgs<RawSyslogMessage>>? Received;
 
+        /// <summary>How long Stop waits for the input UDP buffer to drain; senders that keep sending would otherwise hold it open forever. </summary>
+        public TimeSpan DrainTimeout { get; set; } = TimeSpan.FromSeconds(1);
+
         private Thread? _thread;
-        private bool _running;
+        private volatile bool _running;
         private long _packetCount;
         private readonly bool _disposeClientOnDispose;
 
@@ -74,7 +77,7 @@ namespace SyslogDecode.Udp
             _thread.Start();
         }
 
-        /// <summary>Stops the listener. Waits for draining the input UDP buffer befor closing the listener. </summary>
+        /// <summary>Stops the listener. Waits up to <see cref="DrainTimeout"/> for the listener thread to drain the input UDP buffer before closing the listener. </summary>
         public void Stop()
         {
             if (!_running)
@@ -82,14 +85,16 @@ namespace SyslogDecode.Udp
                 return;
             }
 
-            while (GetUdpBufferBytesAvailable() > 0)
+            DateTime drainUntil = DateTime.UtcNow + DrainTimeout;
+            while (_thread is { IsAlive: true } && GetUdpBufferBytesAvailable() > 0 && DateTime.UtcNow < drainUntil)
             {
                 Thread.Sleep(10);
             }
 
-            PortListener?.Close();
+            // Cleared before the socket closes, so that the listener thread takes the closing for a stop rather than an error
             _running = false;
-            Thread.Sleep(10);
+            PortListener?.Close();
+            _ = _thread?.Join(DrainTimeout);
         }
 
         /// <summary>
