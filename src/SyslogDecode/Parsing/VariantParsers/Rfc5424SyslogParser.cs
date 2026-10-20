@@ -45,11 +45,25 @@ namespace SyslogDecode.Parsing.VariantParsers
         {
             SyslogHeader header = ctx.ParsedMessage.Header = new SyslogHeader();
             header.Timestamp = ctx.ParseStandardTimestamp();
-            header.HostName = ctx.ReadWordOrNil();
-            header.AppName = ctx.ReadWordOrNil();
-            header.ProcId = ctx.ReadWordOrNil();
-            header.MsgId = ctx.ReadWordOrNil();
+            header.HostName = ReadHeaderFieldOrNil(ctx);
+            header.AppName = ReadHeaderFieldOrNil(ctx);
+            header.ProcId = ReadHeaderFieldOrNil(ctx);
+            header.MsgId = ReadHeaderFieldOrNil(ctx);
             return header;
+        }
+
+        /// <summary>Reads HOSTNAME, APP-NAME, PROCID or MSGID, which RFC-5424 makes printable ASCII up to the next SP, '=', '[' and ']' included. </summary>
+        private static string? ReadHeaderFieldOrNil(ParserContext ctx)
+        {
+            ctx.SkipSpaces();
+            int end = ctx.Text.IndexOf(SyslogChars.Space, ctx.Position);
+            if (end < 0)
+            {
+                end = ctx.Text.Length;
+            }
+            string field = ctx.Text[ctx.Position..end];
+            ctx.Position = end;
+            return field == SyslogChars.Nil ? null : field;
         }
 
         private static void ParseStructuredData(ParserContext ctx)

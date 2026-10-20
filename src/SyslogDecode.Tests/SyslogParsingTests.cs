@@ -159,6 +159,22 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestHeaderFieldsKeepEqualsAndBrackets()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<174>1 - host[1] app=x proc]2 id=[3] [a@1 b=\"c\"] the message";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual("host[1]", parsedMsg.Header.HostName);
+            Assert.AreEqual("app=x", parsedMsg.Header.AppName);
+            Assert.AreEqual("proc]2", parsedMsg.Header.ProcId);
+            Assert.AreEqual("id=[3]", parsedMsg.Header.MsgId);
+            Assert.AreEqual("c", parsedMsg.StructuredData5424["a@1"][0].Value);
+            Assert.AreEqual("the message", parsedMsg.Message);
+        }
+
+        [TestMethod]
         public void TestVariantParserFailureKeepsText()
         {
             var parser = SyslogMessageParser.CreateDefault();
