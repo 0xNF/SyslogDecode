@@ -290,6 +290,19 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestKeyValueTimeIsTheReceiversLocalTimeInUtc()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<13>device_id=Durotar date=2026-10-20 time=12:00:00 status=ready";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual(PayloadType.KeyValuePairs, parsedMsg.PayloadType);
+            Assert.AreEqual(new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Local).ToUniversalTime(), parsedMsg.Header.Timestamp);
+            Assert.AreEqual(DateTimeKind.Utc, parsedMsg.Header.Timestamp!.Value.Kind);
+        }
+
+        [TestMethod]
         public void TestMalformedStructuredDataIsKeptInMessage()
         {
             var parser = SyslogMessageParser.CreateDefault();

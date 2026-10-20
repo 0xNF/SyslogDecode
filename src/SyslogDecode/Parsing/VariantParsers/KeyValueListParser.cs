@@ -7,6 +7,7 @@
 using SyslogDecode.Model;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace SyslogDecode.Parsing.VariantParsers
 {
@@ -45,8 +46,9 @@ namespace SyslogDecode.Parsing.VariantParsers
             string? time = kvList.GetValue("time");
             if (date != null)
             {
+                // the sender's clock time, taken as the receiver's local time, as an RFC-3164 time without a zone is
                 string dateTimeStr = $"{date}T{time}";
-                if (DateTime.TryParse(dateTimeStr, out DateTime dt))
+                if (DateTime.TryParse(dateTimeStr, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal, out DateTime dt))
                 {
                     hdr.Timestamp = dt;
                 }
