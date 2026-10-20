@@ -195,6 +195,29 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestTimestampIsReadTheSameInEveryCulture()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<174>1 2026-10-20T12:00:00.123456+09:00 Durotar Orgrimmar - - - msg";
+            var expected = new DateTime(2026, 10, 20, 3, 0, 0, DateTimeKind.Utc).AddTicks(1234560);
+            var culture = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                foreach (var name in new[] { "th-TH", "ar-SA", "fa-IR", "ja-JP", "en-US" })
+                {
+                    System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(name);
+                    var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+                    Assert.AreEqual(expected, parsedMsg.Header.Timestamp, name);
+                    Assert.AreEqual(DateTimeKind.Utc, parsedMsg.Header.Timestamp!.Value.Kind, name);
+                }
+            }
+            finally
+            {
+                System.Globalization.CultureInfo.CurrentCulture = culture;
+            }
+        }
+
+        [TestMethod]
         public void TestMalformedStructuredDataIsKeptInMessage()
         {
             var parser = SyslogMessageParser.CreateDefault();
