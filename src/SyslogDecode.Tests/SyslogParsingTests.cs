@@ -21,8 +21,8 @@ namespace SyslogDecode.Tests
         [TestMethod]
         public void TestParserAndSerializer()
         {
-            // A sample from RFC 5424
-            var header = "<34>1 2003-10-11T22:14:15.003Z mymachine.example.com su - ID47";
+            // A sample from RFC 5424, its time written to the microsecond as the serializer writes it
+            var header = "<34>1 2003-10-11T22:14:15.003000Z mymachine.example.com su - ID47";
             var structData = "[exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"]";
             var customMsg = "My custom message";
 
@@ -127,6 +127,17 @@ namespace SyslogDecode.Tests
             Assert.AreEqual(PayloadType.Rfc5424, highest.PayloadType);
             Assert.AreEqual(Facility.Local7, highest.Facility);
             Assert.AreEqual(Severity.Debug, highest.Severity);
+        }
+
+        [TestMethod]
+        public void TestSerializerKeepsMicrosecondsAndOneSpaceBeforeMessage()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var text = "<174>1 2026-10-20T03:00:00.123456Z Durotar Orgrimmar 21372 - - Lok'tar ogar";
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+            Assert.AreEqual(text, SyslogSerializer.Serialize(parsedMsg));
         }
 
         [TestMethod]

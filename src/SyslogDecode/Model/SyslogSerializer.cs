@@ -25,7 +25,8 @@ namespace SyslogDecode.Model
 
         private static readonly char[] _charsToEscape = [DQuote, Escape, Rbr]; //according to RFC-5424 these must be escaped
 
-        public const string TimestampFormat = "yyyy'-'MM'-'ddTHH:mm:ss.fffZ";
+        /// <summary>UTC to the microsecond, the six fractional digits RFC-5424 allows, so that a sender's microseconds are kept. </summary>
+        public const string TimestampFormat = "yyyy'-'MM'-'ddTHH:mm:ss.ffffffZ";
 
         public static string Serialize(ParsedSyslogMessage entry)
         {
@@ -73,7 +74,6 @@ namespace SyslogDecode.Model
             if (structuredData == null || structuredData.Count == 0)
             {
                 _ = writer.Append(NilChar);
-                _ = writer.Append(Space);
                 return;
             }
 
