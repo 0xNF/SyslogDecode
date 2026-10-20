@@ -38,6 +38,7 @@ namespace SyslogDecode.Udp
             UdpListener = udpListener;
             StreamParser = new SyslogStreamParser(parser);
             _ = UdpListener.Subscribe(StreamParser);
+            UdpListener.Error += UdpListener_Error;
         }
 
         /// <summary>Starts the pipeline, activates the UDP listener.  </summary>
@@ -61,7 +62,7 @@ namespace SyslogDecode.Udp
             UdpListener.Dispose();
         }
 
-        private void UdpListener_Error(object sender, ErrorEventArgs e)
+        private void UdpListener_Error(object? sender, ErrorEventArgs e)
         {
             Error?.Invoke(this, e);
         }
