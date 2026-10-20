@@ -141,6 +141,24 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestMessageKeepsItsLeadingSpaces()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+
+            foreach (var (text, expected) in new[]
+            {
+                ("<174>1 - Durotar Orgrimmar - - -   indented", "  indented"),
+                ("<174>1 - Durotar Orgrimmar - - [a@1 b=\"c\"]  indented", " indented"),
+                ("<174>1 - Durotar Orgrimmar - - - \xFEFF  indented", "  indented"),
+                ("<174>1 - Durotar Orgrimmar - - - plain", "plain"),
+            })
+            {
+                var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text });
+                Assert.AreEqual(expected, parsedMsg.Message, text);
+            }
+        }
+
+        [TestMethod]
         public void TestVariantParserFailureKeepsText()
         {
             var parser = SyslogMessageParser.CreateDefault();

@@ -120,8 +120,12 @@ namespace SyslogDecode.Parsing.VariantParsers
             {
                 return null;
             }
+            // RFC 5424 separates MSG from STRUCTURED-DATA with one SP; any further spaces are the message's own
+            if (ctx.Current == SyslogChars.Space)
+            {
+                ctx.Position++;
+            }
             string msg = ctx.Text[ctx.Position..];
-            msg = msg.TrimStart(SyslogChars.Space);
             // RFC 5424 allows BOM (byte order mark, 3 byte sequence) to precede the actual message. 
             // it will be read into the message OK, now 'msg' can contain this prefix - it is invisible
             // and will bring a lot of trouble when working with the string (ex: string comparisons are broken)
