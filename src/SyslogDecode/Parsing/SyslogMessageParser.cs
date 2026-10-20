@@ -106,10 +106,23 @@ namespace SyslogDecode.Parsing
                 catch (Exception ex)
                 {
                     context.ErrorMessages.Add(ex.ToString() + " message: " + context.Text);
-                    ex.Data["SyslogMessage"] = context.Text;
-                    throw;
+                    ReadAsPlainText(context);
+                    return;
                 }
             }
+        }
+
+        /// <summary>Keeps the text after the &lt;n&gt; prefix as a plain-text message when a variant parser fails partway,
+        /// dropping whatever it had parsed, so that a malformed message is still delivered. </summary>
+        private static void ReadAsPlainText(ParserContext context)
+        {
+            ParsedSyslogMessage message = context.ParsedMessage;
+            message.PayloadType = PayloadType.PlainText;
+            message.Header = new SyslogHeader() { Timestamp = message.Source?.ReceivedOn };
+            message.StructuredData5424.Clear();
+            message.ExtractedTuples.Clear();
+            message.Data.Clear();
+            message.Message = context.Text[context.Prefix.Length..];
         }
 
         /// <summary>Keeps text without a valid &lt;n&gt; prefix as the message, with the priority 13 (user.notice) and the time of receipt

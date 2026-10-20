@@ -129,5 +129,22 @@ namespace SyslogDecode.Tests
             Assert.AreEqual(Severity.Debug, highest.Severity);
         }
 
+        [TestMethod]
+        public void TestVariantParserFailureKeepsText()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var receivedOn = new DateTime(2026, 10, 21, 1, 2, 3, DateTimeKind.Utc);
+
+            // The key-value parser throws on an unterminated quote; the message is kept as plain text with the error recorded
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = "<14>abc=\"unterminated" });
+            Assert.AreEqual(PayloadType.PlainText, parsedMsg.PayloadType);
+            Assert.AreEqual(Facility.UserLevel, parsedMsg.Facility);
+            Assert.AreEqual(Severity.Informational, parsedMsg.Severity);
+            Assert.AreEqual(receivedOn, parsedMsg.Header.Timestamp);
+            Assert.AreEqual("abc=\"unterminated", parsedMsg.Message);
+            Assert.IsEmpty(parsedMsg.ExtractedTuples);
+            Assert.IsNotEmpty(parsedMsg.ErrorMessages);
+        }
+
     }
 }
