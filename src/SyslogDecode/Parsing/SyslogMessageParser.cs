@@ -85,6 +85,7 @@ namespace SyslogDecode.Parsing
         {
             if (!context.ReadSyslogPrefix())
             {
+                ReadAsNotSyslog(context);
                 return;
             }
 
@@ -109,6 +110,18 @@ namespace SyslogDecode.Parsing
                     throw;
                 }
             }
+        }
+
+        /// <summary>Keeps text without a valid &lt;n&gt; prefix as the message, with the priority 13 (user.notice) and the time of receipt
+        /// that RFC-3164 section 4.3.3 has a relay give it. </summary>
+        private static void ReadAsNotSyslog(ParserContext context)
+        {
+            ParsedSyslogMessage message = context.ParsedMessage;
+            message.PayloadType = PayloadType.NotSyslog;
+            message.Facility = Facility.UserLevel;
+            message.Severity = Severity.Notice;
+            message.Header.Timestamp = message.Source?.ReceivedOn;
+            message.Message = context.Text;
         }
 
         private void ExtractDataFromMessage(ParserContext ctx)

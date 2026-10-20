@@ -106,5 +106,28 @@ namespace SyslogDecode.Tests
 
         }
 
+        [TestMethod]
+        public void TestMessageWithoutValidPriority()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var receivedOn = new DateTime(2026, 10, 21, 1, 2, 3, DateTimeKind.Utc);
+
+            // RFC-3164 section 4.3.3: text without a valid PRI is kept whole, as user.notice at the time of receipt
+            foreach (var text in new[] { "hello world, not syslog", "<>1 2003-10-11T22:14:15.003Z host app - - - msg", "<192>1 - - - - - - msg", "<1a>msg" })
+            {
+                var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = text });
+                Assert.AreEqual(PayloadType.NotSyslog, parsedMsg.PayloadType, text);
+                Assert.AreEqual(Facility.UserLevel, parsedMsg.Facility, text);
+                Assert.AreEqual(Severity.Notice, parsedMsg.Severity, text);
+                Assert.AreEqual(receivedOn, parsedMsg.Header.Timestamp, text);
+                Assert.AreEqual(text, parsedMsg.Message, text);
+            }
+
+            var highest = parser.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = "<191>1 - - app - - - msg" });
+            Assert.AreEqual(PayloadType.Rfc5424, highest.PayloadType);
+            Assert.AreEqual(Facility.Local7, highest.Facility);
+            Assert.AreEqual(Severity.Debug, highest.Severity);
+        }
+
     }
 }

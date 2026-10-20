@@ -7,6 +7,7 @@
 using SyslogDecode.Model;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -14,6 +15,9 @@ namespace SyslogDecode.Parsing.VariantParsers
 {
     public static class ParserContextExtensions
     {
+        /// <summary>The highest priority RFC-5424 allows: facility local7 (23) times 8, plus severity debug (7). </summary>
+        public const int MaxPriority = 191;
+
         public static bool ReadSymbol(this ParserContext ctx, char symbol, bool throwIfMismatch = true)
         {
             if (ctx.Current == SyslogChars.Space)
@@ -128,15 +132,20 @@ namespace SyslogDecode.Parsing.VariantParsers
 
         /// <summary>Parser standard (for all levels) prefix &lt;n&gt;. </summary>
         /// <param name="ctx">parser context.</param>
-        /// <returns>True if prefix read correctly; otherwise, false.</returns>
+        /// <returns>True if prefix read correctly, with a priority from 0 to 191 as RFC-5424 allows; otherwise, false.</returns>
         public static bool ReadSyslogPrefix(this ParserContext ctx)
         {
             try
             {
                 ctx.Position = 0;
                 _ = ctx.ReadSymbol(SyslogChars.LT);
-                _ = ctx.ReadDigits(3);
+                string? digits = ctx.ReadDigits(3);
                 _ = ctx.ReadSymbol(SyslogChars.GT);
+                if (!int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out int pri) || pri > MaxPriority)
+                {
+                    ctx.Position = 0;
+                    return false;
+                }
                 ctx.Prefix = ctx.Text[..ctx.Position];
                 return true;
             }
