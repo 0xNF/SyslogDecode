@@ -92,6 +92,11 @@ namespace SyslogDecode.Parsing
 
         internal void Parse(ParserContext context)
         {
+            if (VariantParsers.Count == 0)
+            {
+                throw new InvalidOperationException("The parser has no variant parsers. Add them with AddVariantParsers, or create the parser with CreateDefault.");
+            }
+
             if (!context.ReadSyslogPrefix())
             {
                 ReadAsNotSyslog(context);

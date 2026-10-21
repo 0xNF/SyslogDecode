@@ -464,6 +464,20 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestAParserWithNoVariantParsersRefusesToParse()
+        {
+            var empty = new SyslogMessageParser();
+
+            foreach (var text in new[] { "<14>For the Horde", "no prefix at all" })
+            {
+                var raw = new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = text };
+                Assert.ThrowsExactly<InvalidOperationException>(() => empty.Parse(raw), text);
+                Assert.IsFalse(empty.TryParse(raw, out var parsed), text);
+                Assert.IsNull(parsed, text);
+            }
+        }
+
+        [TestMethod]
         public void TestTheDefaultParserSetCanBeBuiltFromPublicTypes()
         {
             var byDefault = SyslogMessageParser.CreateDefault();
