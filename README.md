@@ -148,3 +148,12 @@ This repository contains the following projects:
 * *SyslogDecode.SampleApp* - a sample console application, sets up a local UDP-fed syslog processing pipeline and sends a batch of simulated syslog message to the port. Verifies message counts, verifies that IP addresses were extraced correctly from the messages.
 * *SyslogDecode.TestLoadApp* - a command line tool to send events from a *pcapng* file to the target UDP port. It can be used to test the server pipeline with real syslog messages. *Pcapng* file might be produced by capturing the syslog traffic on a network using a tool like [WireShark](https://en.wikipedia.org/wiki/Wireshark).
 
+## Running the tests
+From the repository root, with the .NET 10 SDK:
+
+```
+dotnet test src/SyslogDecode.Tests/SyslogDecode.Tests.csproj
+```
+
+Adding `--filter "FullyQualifiedName~SyslogParsingTests"` runs one class.
+

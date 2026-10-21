@@ -463,5 +463,40 @@ namespace SyslogDecode.Tests
             CollectionAssert.AreEqual(new[] { "10.0.0.7" }, (string[])keyValue.Data["IPv4"]);
         }
 
+        [TestMethod]
+        public void TestTheDefaultParserSetCanBeBuiltFromPublicTypes()
+        {
+            var byDefault = SyslogMessageParser.CreateDefault();
+            var rebuilt = new SyslogMessageParser();
+            rebuilt.AddVariantParsers(new Rfc5424SyslogParser(), new KeyValueListParser(), new Rfc3164SyslogParser(), new PlainTextParser());
+            rebuilt.AddValueExtractors(new IpAddressesExtractor());
+            CollectionAssert.AreEqual(byDefault.VariantParsers.Select(p => p.GetType()).ToArray(), rebuilt.VariantParsers.Select(p => p.GetType()).ToArray());
+            CollectionAssert.AreEqual(byDefault.ValueExtractors.Select(e => e.GetType()).ToArray(), rebuilt.ValueExtractors.Select(e => e.GetType()).ToArray());
+
+            var month = MonthNames[DateTime.UtcNow.Month - 1];
+            foreach (var (text, payloadType) in new[]
+            {
+                ("<174>1 2026-10-20T03:00:00.123456Z Durotar Orgrimmar 21372 ID47 [gravio@19654 peer=\"10.0.0.7\"] Lok'tar ogar", PayloadType.Rfc5424),
+                ($"<13>{month}  1 12:00:00 Durotar sshd[4242]: Accepted publickey from 10.0.0.7", PayloadType.Rfc3164),
+                ("<13>device_id=Durotar date=2026-10-20 time=12:00:00 src=10.0.0.7", PayloadType.KeyValuePairs),
+                ("<14>For the Horde, said 10.0.0.7", PayloadType.PlainText),
+            })
+            {
+                var receivedOn = DateTime.UtcNow;
+                var expected = byDefault.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = text });
+                var actual = rebuilt.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+                Assert.AreEqual(payloadType, actual.PayloadType, text);
+                Assert.AreEqual(expected.Header.Timestamp, actual.Header.Timestamp, text);
+                Assert.AreEqual(expected.Header.HostName, actual.Header.HostName, text);
+                Assert.AreEqual(expected.Header.AppName, actual.Header.AppName, text);
+                Assert.AreEqual(expected.Message, actual.Message, text);
+                CollectionAssert.AreEqual(StructuredDataOf(expected), StructuredDataOf(actual), text);
+                CollectionAssert.AreEqual(PairsOf(expected.ExtractedTuples), PairsOf(actual.ExtractedTuples), text);
+                Assert.IsNotEmpty(actual.ExtractedTuples, text);
+                Assert.IsEmpty(actual.ErrorMessages, text);
+            }
+        }
+
     }
 }

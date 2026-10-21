@@ -14,7 +14,7 @@ namespace SyslogDecode.Parsing.VariantParsers
     /// <summary>Parses list of key-value pairs; like Sophos firewal format: 
     /// https://docs.sophos.com/nsg/sophos-firewall/v16058/Help/en-us/webhelp/onlinehelp/index.html#page/onlinehelp/WAFLogs.html
     /// </summary>
-    internal class KeyValueListParser : ISyslogVariantParser
+    public class KeyValueListParser : ISyslogVariantParser
     {
         public bool TryParse(ParserContext ctx)
         {
