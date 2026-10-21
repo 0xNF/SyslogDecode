@@ -20,17 +20,26 @@ namespace SyslogDecode.Parsing
         public readonly List<ISyslogVariantParser> VariantParsers = [];
         public readonly List<IValuesExtractor> ValueExtractors = [];
 
+        /// <summary>Whether a parsed message's values are extracted into <see cref="ParsedSyslogMessage.ExtractedTuples"/> and merged
+        /// into <see cref="ParsedSyslogMessage.Data"/>. The default is true. </summary>
+        /// <remarks>When false, neither the value extractors nor the IP addresses search of structured data and key-value pairs run,
+        /// <see cref="ParsedSyslogMessage.Data"/> stays empty, and <see cref="ParsedSyslogMessage.ExtractedTuples"/> holds only what
+        /// a variant parser put there, the pairs of a key-value message. The header, structured data, message, facility and severity
+        /// are the same either way. </remarks>
+        public bool ExtractData { get; init; } = true;
+
         /// <summary> Creates and configures a default parser, with support for all major syslog versions 
         ///     and IP addresses extractor. 
         /// </summary>
+        /// <param name="extractData">The parser's <see cref="ExtractData"/>; false skips the extraction and the Data dictionary.</param>
         /// <returns>Syslog parser instance.</returns>
         /// <remarks>The default parser contains a number of parsers for specific syslog formats: RFC-5424, RFC-3164, 
         /// key-value pairs parser, and plain text parser. It also adds IP addresses extractor that extracts IPv4 and IPv6
         /// addresses from the messages and places them into ExtractedData dictionary field of the output parsed message.
         /// </remarks>
-        public static SyslogMessageParser CreateDefault()
+        public static SyslogMessageParser CreateDefault(bool extractData = true)
         {
-            SyslogMessageParser parser = new();
+            SyslogMessageParser parser = new() { ExtractData = extractData };
             parser.AddVariantParsers(new Rfc5424SyslogParser(), new KeyValueListParser(),
                                      new Rfc3164SyslogParser(), new PlainTextParser());
             parser.AddValueExtractors(new IpAddressesExtractor());
@@ -98,8 +107,11 @@ namespace SyslogDecode.Parsing
                 {
                     if (parser.TryParse(context))
                     {
-                        ExtractDataFromMessage(context);
-                        BuildAllDataDictionary(context.ParsedMessage); // put all parsed/extracted data into AllData dictionary
+                        if (ExtractData)
+                        {
+                            ExtractDataFromMessage(context);
+                            BuildAllDataDictionary(context.ParsedMessage); // put all parsed/extracted data into AllData dictionary
+                        }
                         return;
                     }
                 }

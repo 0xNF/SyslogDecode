@@ -8,10 +8,13 @@
 namespace SyslogDecode.Tests
 {
     using System;
+    using System.Collections.Generic;
     using System.Linq;
     using System.Net;
     using Microsoft.VisualStudio.TestTools.UnitTesting;
     using SyslogDecode.Parsing;
+    using SyslogDecode.Parsing.Extractors;
+    using SyslogDecode.Parsing.VariantParsers;
     using System.Text;
     using SyslogDecode.Model;
 
@@ -357,6 +360,95 @@ namespace SyslogDecode.Tests
             Assert.AreEqual("abc=\"unterminated", parsedMsg.Message);
             Assert.IsEmpty(parsedMsg.ExtractedTuples);
             Assert.IsNotEmpty(parsedMsg.ErrorMessages);
+        }
+
+        private static string[] StructuredDataOf(ParsedSyslogMessage msg) =>
+            [.. msg.StructuredData5424.SelectMany(e => e.Value.Select(p => e.Key + "/" + p.Name + "=" + p.Value))];
+
+        private static string[] PairsOf(IEnumerable<NameValuePair> pairs) => [.. pairs.Select(p => p.Name + "=" + p.Value)];
+
+        [TestMethod]
+        public void TestWithoutExtractDataTheParseIsTheSameAndDataIsEmpty()
+        {
+            var extracting = SyslogMessageParser.CreateDefault();
+            var notExtracting = SyslogMessageParser.CreateDefault(extractData: false);
+            Assert.IsTrue(extracting.ExtractData);
+            Assert.IsTrue(new SyslogMessageParser().ExtractData);
+            Assert.IsFalse(notExtracting.ExtractData);
+            var month = MonthNames[DateTime.UtcNow.Month - 1];
+
+            foreach (var (text, payloadType) in new[]
+            {
+                ("<174>1 2026-10-20T03:00:00.123456Z Durotar Orgrimmar 21372 ID47 [gravio@19654 peer=\"10.0.0.7\" zone=\"Valley of Strength\"][origin ip=\"10.0.0.8\"] Lok'tar ogar from 10.0.0.9", PayloadType.Rfc5424),
+                ($"<13>{month}  1 12:00:00 Durotar sshd[4242]: Accepted publickey for thrall from 10.0.0.7 port 22", PayloadType.Rfc3164),
+                ("<14>For the Horde, said 10.0.0.7 and 2234:23d5:e0:25a3::55", PayloadType.PlainText),
+                ("<13>device_id=Durotar date=2026-10-20 time=12:00:00 src=10.0.0.7 status=ready", PayloadType.KeyValuePairs),
+            })
+            {
+                var receivedOn = DateTime.UtcNow;
+                var on = extracting.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = text });
+                var off = notExtracting.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = text });
+
+                Assert.AreEqual(payloadType, on.PayloadType, text);
+                Assert.AreEqual(payloadType, off.PayloadType, text);
+                Assert.AreEqual(on.Facility, off.Facility, text);
+                Assert.AreEqual(on.Severity, off.Severity, text);
+                // the plain-text parser stamps the time it parses, so two parses of one record differ there
+                if (payloadType != PayloadType.PlainText)
+                {
+                    Assert.AreEqual(on.Header.Timestamp, off.Header.Timestamp, text);
+                }
+                Assert.AreEqual(on.Header.HostName, off.Header.HostName, text);
+                Assert.AreEqual(on.Header.AppName, off.Header.AppName, text);
+                Assert.AreEqual(on.Header.ProcId, off.Header.ProcId, text);
+                Assert.AreEqual(on.Header.MsgId, off.Header.MsgId, text);
+                Assert.AreEqual(on.Header.Version, off.Header.Version, text);
+                Assert.AreEqual(on.Message, off.Message, text);
+                CollectionAssert.AreEqual(StructuredDataOf(on), StructuredDataOf(off), text);
+                Assert.IsEmpty(on.ErrorMessages, text);
+                Assert.IsEmpty(off.ErrorMessages, text);
+
+                Assert.IsNotEmpty(on.Data, text);
+                Assert.IsEmpty(off.Data, text);
+                CollectionAssert.AreEqual(PairsOf(on.ExtractedTuples.Where(p => p.Name is not ("IPv4" or "IPv6"))), PairsOf(off.ExtractedTuples), text);
+            }
+
+            var keyValue = notExtracting.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = "<13>device_id=Durotar src=10.0.0.7" });
+            CollectionAssert.AreEqual(new[] { "device_id=Durotar", "src=10.0.0.7" }, PairsOf(keyValue.ExtractedTuples));
+
+            // an initializer sets it too, and it skips the extractors the parser was given
+            var initialized = new SyslogMessageParser { ExtractData = false };
+            initialized.AddVariantParsers(new Rfc3164SyslogParser());
+            initialized.AddValueExtractors(new IpAddressesExtractor());
+            var rfc3164 = initialized.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = $"<13>{month}  1 12:00:00 Durotar sshd[4242]: Accepted publickey from 10.0.0.7" });
+            Assert.AreEqual("Accepted publickey from 10.0.0.7", rfc3164.Message);
+            Assert.IsEmpty(rfc3164.ExtractedTuples);
+            Assert.IsEmpty(rfc3164.Data);
+        }
+
+        [TestMethod]
+        public void TestDefaultParserExtractsIpAddressesAndMergesData()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var month = MonthNames[DateTime.UtcNow.Month - 1];
+
+            // RFC-5424: the IP addresses among the SD values, not in MSG, and every SD parameter
+            var rfc5424 = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = "<174>1 - Durotar Orgrimmar - - [gravio@19654 peer=\"10.0.0.7\" zone=\"Valley of Strength\"][origin ip=\"10.0.0.8\"] from 10.0.0.9" });
+            CollectionAssert.AreEqual(new[] { "IPv4=10.0.0.7", "IPv4=10.0.0.8" }, PairsOf(rfc5424.ExtractedTuples));
+            CollectionAssert.AreEquivalent(new[] { "IPv4", "peer", "zone", "ip" }, rfc5424.Data.Keys.ToArray());
+            CollectionAssert.AreEqual(new[] { "10.0.0.7", "10.0.0.8" }, (string[])rfc5424.Data["IPv4"]);
+            Assert.AreEqual("Valley of Strength", rfc5424.Data["zone"]);
+
+            // RFC-3164: the IP addresses in MSG, always an array
+            var rfc3164 = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = $"<13>{month}  1 12:00:00 Durotar sshd[4242]: Accepted publickey from 10.0.0.7" });
+            CollectionAssert.AreEqual(new[] { "IPv4=10.0.0.7" }, PairsOf(rfc3164.ExtractedTuples));
+            CollectionAssert.AreEqual(new[] { "10.0.0.7" }, (string[])rfc3164.Data["IPv4"]);
+
+            // key-value: the pairs, then the IP addresses among their values
+            var keyValue = parser.Parse(new RawSyslogMessage() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = IPAddress.Loopback, Message = "<13>device_id=Durotar src=10.0.0.7" });
+            CollectionAssert.AreEqual(new[] { "device_id=Durotar", "src=10.0.0.7", "IPv4=10.0.0.7" }, PairsOf(keyValue.ExtractedTuples));
+            Assert.AreEqual("Durotar", keyValue.Data["device_id"]);
+            CollectionAssert.AreEqual(new[] { "10.0.0.7" }, (string[])keyValue.Data["IPv4"]);
         }
 
     }
