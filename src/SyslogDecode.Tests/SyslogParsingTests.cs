@@ -110,6 +110,18 @@ namespace SyslogDecode.Tests
         }
 
         [TestMethod]
+        public void TestPlainTextIsDatedWhenItWasReceived()
+        {
+            var parser = SyslogMessageParser.CreateDefault();
+            var receivedOn = new DateTime(2026, 10, 21, 1, 2, 3, DateTimeKind.Utc);
+
+            var parsedMsg = parser.Parse(new RawSyslogMessage() { ReceivedOn = receivedOn, SourceIpAddress = IPAddress.Loopback, Message = "<13>Lok'tar ogar, not in any syslog format" });
+
+            Assert.AreEqual(PayloadType.PlainText, parsedMsg.PayloadType);
+            Assert.AreEqual(receivedOn, parsedMsg.Header.Timestamp);
+        }
+
+        [TestMethod]
         public void TestMessageWithoutValidPriority()
         {
             var parser = SyslogMessageParser.CreateDefault();

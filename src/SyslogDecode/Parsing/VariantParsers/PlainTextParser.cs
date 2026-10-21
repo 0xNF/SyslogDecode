@@ -15,7 +15,8 @@ namespace SyslogDecode.Parsing.VariantParsers
             ctx.SkipSpaces();
             ctx.ParsedMessage.PayloadType = Model.PayloadType.PlainText;
             ctx.ParsedMessage.Message = ctx.Text[ctx.Position..];
-            ctx.ParsedMessage.Header.Timestamp = DateTime.UtcNow;
+            // A text with no header of its own is dated when it was received, as ReadAsPlainText and ReadAsNotSyslog date theirs
+            ctx.ParsedMessage.Header.Timestamp = ctx.ParsedMessage.Source?.ReceivedOn ?? DateTime.UtcNow;
             return true;
         }
     }
