@@ -51,6 +51,43 @@ namespace SyslogDecode.Tests
             Assert.IsTrue(Task.Run(listener.Stop).Wait(TimeSpan.FromSeconds(5)), "Stop did not return.");
         }
 
+        [TestMethod]
+        public void TestADatagramArrivingAfterSeveralIdlePollsIsReceived()
+        {
+            using var listener = new SyslogUdpListener(IPAddress.Loopback, 0);
+            using var received = new ManualResetEventSlim();
+            string message = null;
+            listener.Received += (s, e) =>
+            {
+                message = e.Item.Message;
+                received.Set();
+            };
+            listener.Start();
+            var endPoint = (IPEndPoint)listener.PortListener!.Client.LocalEndPoint!;
+            using var sender = new UdpClient();
+
+            Thread.Sleep(3 * SyslogUdpListener.ReceivePollInterval);
+            sender.Send(Encoding.UTF8.GetBytes("<14>Lok'tar ogar"), endPoint);
+
+            Assert.IsTrue(received.Wait(TimeSpan.FromSeconds(5)), "The datagram was not received.");
+            Assert.AreEqual("<14>Lok'tar ogar", message);
+            Assert.IsTrue(Task.Run(listener.Stop).Wait(listener.DrainTimeout + 2 * SyslogUdpListener.ReceivePollInterval), "Stop did not return.");
+        }
+
+        [TestMethod]
+        public void TestClosingTheSocketUnderARunningListenerRaisesError()
+        {
+            using var listener = new SyslogUdpListener(IPAddress.Loopback, 0);
+            using var failed = new ManualResetEventSlim();
+            listener.Error += (s, e) => failed.Set();
+            listener.Start();
+            Thread.Sleep(100); // let the listener thread wait for a datagram
+
+            Assert.IsTrue(Task.Run(listener.PortListener!.Close).Wait(TimeSpan.FromSeconds(5)), "Close did not return.");
+
+            Assert.IsTrue(failed.Wait(TimeSpan.FromSeconds(5)), "The listener raised no error.");
+        }
+
         class ThrowingObserver : IObserver<RawSyslogMessage>
         {
             public void OnNext(RawSyslogMessage value) => throw new InvalidOperationException("observer failed");

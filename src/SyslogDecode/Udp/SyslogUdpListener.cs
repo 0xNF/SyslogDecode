@@ -32,6 +32,9 @@ namespace SyslogDecode.Udp
         /// <summary>How long Stop waits for the input UDP buffer to drain; senders that keep sending would otherwise hold it open forever. </summary>
         public TimeSpan DrainTimeout { get; set; } = TimeSpan.FromSeconds(1);
 
+        /// <summary>How long the listener thread waits for a datagram before it checks again whether it was stopped. </summary>
+        public static readonly TimeSpan ReceivePollInterval = TimeSpan.FromMilliseconds(250);
+
         private Thread? _thread;
         private volatile bool _running;
         private long _packetCount;
@@ -72,12 +75,13 @@ namespace SyslogDecode.Udp
             // Note: going with multiple threads here results in broken messages, the received message gets cut-off
             _thread = new Thread(RunListenerLoop)
             {
-                Priority = ThreadPriority.Highest
+                Priority = ThreadPriority.Highest,
+                IsBackground = true
             };
             _thread.Start();
         }
 
-        /// <summary>Stops the listener. Waits up to <see cref="DrainTimeout"/> for the listener thread to drain the input UDP buffer before closing the listener. </summary>
+        /// <summary>Stops the listener. Waits up to <see cref="DrainTimeout"/> for the listener thread to drain the input UDP buffer, and for the thread to end, before closing the listener. </summary>
         public void Stop()
         {
             if (!_running)
@@ -93,8 +97,8 @@ namespace SyslogDecode.Udp
 
             // Cleared before the socket closes, so that the listener thread takes the closing for a stop rather than an error
             _running = false;
+            _ = _thread?.Join(DrainTimeout + ReceivePollInterval);
             PortListener?.Close();
-            _ = _thread?.Join(DrainTimeout);
         }
 
         /// <summary>
@@ -113,7 +117,12 @@ namespace SyslogDecode.Udp
                 IPEndPoint remoteIp = new(IPAddress.Any, 0);
                 while (_running)
                 {
-                    byte[] bytes = PortListener!.Receive(ref remoteIp); // Not null here because this is only called by .Start() which ensures PortListener is set
+                    // Receives only what has arrived, because closing a socket another thread is blocked receiving on never returns on macOS, where .NET cannot abort a UDP receive
+                    if (!PortListener!.Client.Poll(ReceivePollInterval, SelectMode.SelectRead))
+                    {
+                        continue;
+                    }
+                    byte[] bytes = PortListener.Receive(ref remoteIp);
                     string message = Encoding.UTF8.GetString(bytes); // See notes on encoding at the end of this file
                     RawSyslogMessage msg = new() { ReceivedOn = DateTime.UtcNow, SourceIpAddress = remoteIp.Address, Message = message };
                     _ = Interlocked.Increment(ref _packetCount);
