@@ -35,6 +35,9 @@ namespace SyslogDecode.Udp
         /// <summary>How long the listener thread waits for a datagram before it checks again whether it was stopped. </summary>
         public static readonly TimeSpan ReceivePollInterval = TimeSpan.FromMilliseconds(250);
 
+        // Held apart from PortListener because UdpClient forgets its socket when closed, and the socket then throws ObjectDisposedException where the client would throw NullReferenceException
+        private readonly Socket _socket;
+
         private Thread? _thread;
         private volatile bool _running;
         private long _packetCount;
@@ -51,12 +54,14 @@ namespace SyslogDecode.Udp
             IPEndPoint endPoint = new(address, port);
             PortListener = new UdpClient(endPoint);
             PortListener.Client.ReceiveBufferSize = bufferSize;
+            _socket = PortListener.Client;
             _disposeClientOnDispose = true;
         }
 
         public SyslogUdpListener(UdpClient portListener)
         {
             PortListener = portListener;
+            _socket = portListener.Client;
             _disposeClientOnDispose = false;
         }
 
@@ -118,7 +123,7 @@ namespace SyslogDecode.Udp
                 while (_running)
                 {
                     // Receives only what has arrived, because closing a socket another thread is blocked receiving on never returns on macOS, where .NET cannot abort a UDP receive; it polls only when nothing is waiting, since a poll before every datagram slows a burst
-                    if (PortListener!.Available == 0 && !PortListener.Client.Poll(ReceivePollInterval, SelectMode.SelectRead))
+                    if (_socket.Available == 0 && !_socket.Poll(ReceivePollInterval, SelectMode.SelectRead))
                     {
                         continue;
                     }

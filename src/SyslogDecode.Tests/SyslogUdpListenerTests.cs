@@ -79,13 +79,39 @@ namespace SyslogDecode.Tests
         {
             using var listener = new SyslogUdpListener(IPAddress.Loopback, 0);
             using var failed = new ManualResetEventSlim();
-            listener.Error += (s, e) => failed.Set();
+            Exception error = null;
+            listener.Error += (s, e) =>
+            {
+                error = e.Error;
+                failed.Set();
+            };
             listener.Start();
             Thread.Sleep(100); // let the listener thread wait for a datagram
 
             Assert.IsTrue(Task.Run(listener.PortListener!.Close).Wait(TimeSpan.FromSeconds(5)), "Close did not return.");
 
             Assert.IsTrue(failed.Wait(TimeSpan.FromSeconds(5)), "The listener raised no error.");
+            Assert.IsTrue(error is ObjectDisposedException or SocketException, error.ToString());
+        }
+
+        [TestMethod]
+        public void TestASocketClosedBeforeTheListenerStartsRaisesObjectDisposed()
+        {
+            using var listener = new SyslogUdpListener(IPAddress.Loopback, 0);
+            using var failed = new ManualResetEventSlim();
+            Exception error = null;
+            listener.Error += (s, e) =>
+            {
+                error = e.Error;
+                failed.Set();
+            };
+
+            listener.PortListener!.Close();
+            listener.Start();
+
+            Assert.IsTrue(failed.Wait(TimeSpan.FromSeconds(5)), "The listener raised no error.");
+            Assert.IsInstanceOfType<ObjectDisposedException>(error, error.ToString());
+            listener.Stop();
         }
 
         class ThrowingObserver : IObserver<RawSyslogMessage>
