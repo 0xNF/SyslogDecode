@@ -117,8 +117,8 @@ namespace SyslogDecode.Udp
                 IPEndPoint remoteIp = new(IPAddress.Any, 0);
                 while (_running)
                 {
-                    // Receives only what has arrived, because closing a socket another thread is blocked receiving on never returns on macOS, where .NET cannot abort a UDP receive
-                    if (!PortListener!.Client.Poll(ReceivePollInterval, SelectMode.SelectRead))
+                    // Receives only what has arrived, because closing a socket another thread is blocked receiving on never returns on macOS, where .NET cannot abort a UDP receive; it polls only when nothing is waiting, since a poll before every datagram slows a burst
+                    if (PortListener!.Available == 0 && !PortListener.Client.Poll(ReceivePollInterval, SelectMode.SelectRead))
                     {
                         continue;
                     }
